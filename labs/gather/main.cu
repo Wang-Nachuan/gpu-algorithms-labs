@@ -1,7 +1,17 @@
 #include "helper.hpp"
 
+#define BLOCK_WIDTH 512
+
 __global__ void s2g_gpu_gather_kernel(uint32_t *in, uint32_t *out, int len) {
   //@@ INSERT KERNEL CODE HERE
+  int outIdx = blockIdx.x * BLOCK_WIDTH + threadIdx.x;
+  if (outIdx < len) {
+    int out_reg = 0;
+    for (int inIdx = 0; inIdx < len; ++inIdx) {
+      out_reg += outDependent(outInvariant(in[inIdx]), inIdx, outIdx);
+    }
+    out[outIdx] += out_reg;
+  }
 }
 
 
@@ -19,6 +29,9 @@ static void s2g_cpu_gather(uint32_t *in, uint32_t *out, int len) {
 
 static void s2g_gpu_gather(uint32_t *in, uint32_t *out, int len) {
   //@@ INSERT CODE HERE
+  dim3 DimGrid(ceil((float) len / BLOCK_WIDTH), 1, 1);
+  dim3 DimBlock(BLOCK_WIDTH, 1, 1);
+  s2g_gpu_gather_kernel<<<DimGrid, DimBlock>>>(in, out, len);
 }
 
 
