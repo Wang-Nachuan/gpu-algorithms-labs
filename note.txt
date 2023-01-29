@@ -1,0 +1,11 @@
+Pull from course repo: 
+
+    git pull upstream master
+
+Submit the code:
+
+    rai -p ./labs/<lab_folder>
+
+Print submission history:
+
+    rai -p ./labs/<lab_folder>/ history
