@@ -8,4 +8,4 @@ Submit the code:
 
 Print submission history:
 
-    rai -p ./labs/<lab_folder>/ history
+    rai -p ./labs/<lab_folder> history
