@@ -20,22 +20,26 @@ __global__ void kernel(int *A0, int *Anext, int nx, int ny, int nz) {
   if (i < nx && j < ny) {
     cur = in(i, j, 0);
     nex = in(i, j, 1);
-    for (int k = 1; k < nz - 1; k++) {
-      pre = cur;
-      cur = nex;
-      nex = in(i, j, k+1);
-      N_ds[tx][ty] = cur;
-      __syncthreads();
-      if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1) {
-        out(i, j, k) = -6 * cur + pre + nex + 
-          (tx > 0 ? N_ds[tx-1][ty] : in(i-1, j, k)) + 
-          (tx < TILE_SIZE - 1 ? N_ds[tx+1][ty] : in(i+1, j, k)) + 
-          (ty > 0 ? N_ds[tx][ty-1] : in(i, j-1, k)) + 
-          (ty < TILE_SIZE - 1 ? N_ds[tx][ty+1] : in(i, j+1, k));
-      }
-      __syncthreads();
-    }
   }
+
+  for (int k = 1; k < nz - 1; k++) {
+    pre = cur;
+    cur = nex;
+    if (i < nx && j < ny) {
+      nex = in(i, j, k+1);
+    }
+    N_ds[tx][ty] = cur;
+    __syncthreads();
+    if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1) {
+      out(i, j, k) = -6 * cur + pre + nex + 
+        (tx > 0 ? N_ds[tx-1][ty] : in(i-1, j, k)) + 
+        (tx < TILE_SIZE - 1 ? N_ds[tx+1][ty] : in(i+1, j, k)) + 
+        (ty > 0 ? N_ds[tx][ty-1] : in(i, j-1, k)) + 
+        (ty < TILE_SIZE - 1 ? N_ds[tx][ty+1] : in(i, j+1, k));
+    }
+    __syncthreads();
+  }
+  
 
   #undef in
   #undef out

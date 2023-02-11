@@ -1,3 +1,5 @@
+cd UIUC-ECE508
+
 Pull from course repo: 
 
     git pull upstream master
