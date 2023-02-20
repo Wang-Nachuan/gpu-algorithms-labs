@@ -6,8 +6,8 @@ Pull from course repo:
 
 Submit the code:
 
-    rai -p ./labs/<lab_folder>
+    rai -p .
 
 Print submission history:
 
-    rai -p ./labs/<lab_folder> history
+    rai -p . history

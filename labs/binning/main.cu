@@ -48,12 +48,32 @@
 __global__ void gpu_normal_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in) {
   //@@ INSERT CODE HERE
+  int tx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tx < grid_size) {
+    float outVal = 0;
+    for (int i = 0; i < num_in; i++) {
+      float dist2 = pow(in_pos[i] - tx, 2);
+      outVal += pow(in_val[i], 2) / dist2;
+    }
+    out[tx] = outVal;
+  }
 }
 
 __global__ void gpu_cutoff_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in,
                                   float cutoff2) {
   //@@ INSERT CODE HERE
+  int tx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tx < grid_size) {
+    float outVal = 0;
+    for (int i = 0; i < num_in; i++) {
+      float dist2 = pow(in_pos[i] - tx, 2);
+      if (dist2 < cutoff2) {
+        outVal += pow(in_val[i], 2) / dist2;
+      }
+    }
+    out[tx] = outVal;
+  }
 }
 
 __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
@@ -61,7 +81,22 @@ __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
                                          float *in_pos_sorted, float *out,
                                          int grid_size, float cutoff2) {
   //@@ INSERT CODE HERE
-
+  int tx = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tx < grid_size) {
+    float outVal = 0;
+    float cutoff = sqrtf(cutoff2);
+    int bound_lower = (tx - cutoff) >= 0 ? (int) (NUM_BINS * (tx - cutoff) / grid_size) : 0;
+    int bound_upper = (tx + cutoff) < grid_size ? (int) (NUM_BINS * (tx + cutoff) / grid_size) : (NUM_BINS - 1);
+    int binIdx_min = bin_ptrs[bound_lower];
+    int binIdx_max = bin_ptrs[bound_upper+1];
+    for (int i = binIdx_min; i < binIdx_max; i++) {
+      float dist2 = pow(in_pos_sorted[i] - tx, 2);
+      if (dist2 <= cutoff2) {
+        outVal += pow(in_val_sorted[i], 2) / dist2;
+      }
+    }
+    out[tx] = outVal;
+  }
 }
 
 /******************************************************************************
