@@ -91,7 +91,7 @@ __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
     int binIdx_max = bin_ptrs[bound_upper+1];
     for (int i = binIdx_min; i < binIdx_max; i++) {
       float dist2 = pow(in_pos_sorted[i] - tx, 2);
-      if (dist2 <= cutoff2) {
+      if (dist2 < cutoff2) {
         outVal += pow(in_val_sorted[i], 2) / dist2;
       }
     }
