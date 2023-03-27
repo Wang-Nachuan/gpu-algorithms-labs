@@ -89,24 +89,20 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
   const int b = blockIdx.z;
   const int M = ydims.depth;
   const int C1 = xdims.depth;
+  const int H = xdims.height;
+  const int W1 = xdims.width;
   const int K = wdims.height;
-  const int H = ydims.height;
-  const int W1 = ydims.width;
   const int H_out = H - K + 1;
   const int W_out = W1 - K + 1;
   const int K_size = K * K;
 
-  #define y4d_mtx(ri, ci) Y[(b) * (M * H_out * W_out) + (ri) * (H_out * W_out) + ((ci) / W_out) * (W_out) + ((ci) % W_out)]
-  #define x4d_mtx(ri, ci) X[(b) * (C1 * H * W1) + ((ri) / K_size) * (H * W1) + (((ri) % K_size) / K + ((ci) / W_out)) * (W1) + (((ri) % K_size) % K + ((ci) % W_out))]
-  #define k4d_mtx(ri, ci) const_k[(ri) * (C1 * K * K) + (ci)]
+  #define C(ri, ci) Y[(b) * (M * H_out * W_out) + (ri) * (H_out * W_out) + ((ci) / W_out) * (W_out) + ((ci) % W_out)]
+  #define B(ri, ci) X[(b) * (C1 * H * W1) + ((ri) / K_size) * (H * W1) + (((ri) % K_size) / K + ((ci) / W_out)) * (W1) + (((ri) % K_size) % K + ((ci) % W_out))]
+  #define A(ri, ci) const_k[(ri) * (C1 * K * K) + (ci)]
 
   const int m = M;
   const int k = K_size * C1;
   const int n = H_out * W_out;
-
-  #define A(row, col) k4d_mtx((col), (row))
-  #define B(row, col) x4d_mtx((row), (col))
-  #define C(row, col) y4d_mtx((col), (row))
 
   // Do the normal tiled matrix multiplication
   __shared__ float B_ds[TILE_SZ_RATIO][TILE_SZ_B];
@@ -115,7 +111,7 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
   int col = blockIdx.y * TILE_SZ_B;
   float out0 = 0, out1 = 0, out2 = 0, out3 = 0, out4 = 0, out5 = 0, out6 = 0, out7 = 0,
     out8 = 0, out9 = 0, out10 = 0, out11 = 0, out12 = 0, out13 = 0, out14 = 0, out15 = 0;
-  
+
   for (int tn = 0; tn < ceil((float) k / TILE_SZ_RATIO); tn++) {
     // Load shared memory
     int rowS = ti / TILE_SZ_B;
@@ -177,10 +173,6 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
   #undef A
   #undef B
   #undef C
-
-  #undef y4d_mtx
-  #undef x4d_mtx
-  #undef k4d_mtx
 }
 
 // Host code to configure baseline GPU kernel
@@ -189,11 +181,10 @@ static void convlayer_gpu_opt(const float *X, const shape &xdims, const float *W
 
   // Modify this code to configure your optimized kernel.
   //@@ YOUR CODE HERE!!!
-  int H_out = ydims.height - wdims.height + 1;
-  int W_out = ydims.width - wdims.width + 1;
+  int H_out = xdims.height - wdims.height + 1;
+  int W_out = xdims.width - wdims.width + 1;
   int mtx_numRow = ydims.depth;
   int mtx_numCol = H_out * W_out;
-  // printf("[Test] wdims.height = %d, wdims.width = %d\n", wdims.height, wdims.width);
   dim3 dimGrid(ceil((float) mtx_numRow/TILE_SZ_A), ceil((float) mtx_numCol/TILE_SZ_B), ydims.num);
   dim3 dimBlock(TILE_SZ_A, 1, 1);
   conv_forward_opt_kernel<<<dimGrid, dimBlock>>>(X, xdims, W, wdims, Y, ydims);
