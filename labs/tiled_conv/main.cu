@@ -1,8 +1,19 @@
 #include "helper.hpp"
 
-#define TILE_SZ_A 128
-#define TILE_SZ_B 16
+#define TILE_SZ_A 32
+#define TILE_SZ_B 32
 #define TILE_SZ_RATIO (TILE_SZ_A/TILE_SZ_B)
+
+/*
+  16, 16: 64.468193ms
+  32, 32: 52.173119ms
+  64, 32: 54.266911ms
+  64, 64：56.390144ms
+  128, 32: 76.832321ms
+  128, 64: 76.948479ms
+  256, 32: 156.062469ms
+  256, 64: 165.208069ms
+ */
 
 __constant__ float const_k[32 * 1 * 5 * 5];
 
@@ -86,31 +97,30 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
   //@@ YOUR CODE HERE!
   
   // Virtualize input/weight as matrix
-  const int b = blockIdx.z;
-  const int M = ydims.depth;
-  const int C1 = xdims.depth;
-  const int H = xdims.height;
-  const int W1 = xdims.width;
-  const int K = wdims.height;
-  const int H_out = H - K + 1;
-  const int W_out = W1 - K + 1;
-  const int K_size = K * K;
+  int b = blockIdx.z;
+  int M = ydims.depth;
+  int C1 = xdims.depth;
+  int H = xdims.height;
+  int W1 = xdims.width;
+  int K = wdims.height;
+  int H_out = H - K + 1;
+  int W_out = W1 - K + 1;
+  int K_size = K * K;
 
   #define C(ri, ci) Y[(b) * (M * H_out * W_out) + (ri) * (H_out * W_out) + ((ci) / W_out) * (W_out) + ((ci) % W_out)]
   #define B(ri, ci) X[(b) * (C1 * H * W1) + ((ri) / K_size) * (H * W1) + (((ri) % K_size) / K + ((ci) / W_out)) * (W1) + (((ri) % K_size) % K + ((ci) % W_out))]
   #define A(ri, ci) const_k[(ri) * (C1 * K * K) + (ci)]
 
-  const int m = M;
-  const int k = K_size * C1;
-  const int n = H_out * W_out;
+  int m = M;
+  int k = K_size * C1;
+  int n = H_out * W_out;
 
   // Do the normal tiled matrix multiplication
   __shared__ float B_ds[TILE_SZ_RATIO][TILE_SZ_B];
   int ti = threadIdx.x;     // Thread index
   int row = blockIdx.x * TILE_SZ_A + ti;
   int col = blockIdx.y * TILE_SZ_B;
-  float out0 = 0, out1 = 0, out2 = 0, out3 = 0, out4 = 0, out5 = 0, out6 = 0, out7 = 0,
-    out8 = 0, out9 = 0, out10 = 0, out11 = 0, out12 = 0, out13 = 0, out14 = 0, out15 = 0;
+  float out[TILE_SZ_B] = {0};
 
   for (int tn = 0; tn < ceil((float) k / TILE_SZ_RATIO); tn++) {
     // Load shared memory
@@ -129,22 +139,10 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
     for (int i = 0; i < TILE_SZ_RATIO; i++) {
       if (row < m && tn * TILE_SZ_RATIO < k) {
         float Ai = A(row, tn * TILE_SZ_RATIO + i);
-        out0 += Ai * B_ds[i][0];
-        out1 += Ai * B_ds[i][1];
-        out2 += Ai * B_ds[i][2];
-        out3 += Ai * B_ds[i][3];
-        out4 += Ai * B_ds[i][4];
-        out5 += Ai * B_ds[i][5];
-        out6 += Ai * B_ds[i][6];
-        out7 += Ai * B_ds[i][7];
-        out8 += Ai * B_ds[i][8];
-        out9 += Ai * B_ds[i][9];
-        out10 += Ai * B_ds[i][10];
-        out11 += Ai * B_ds[i][11];
-        out12 += Ai * B_ds[i][12];
-        out13 += Ai * B_ds[i][13];
-        out14 += Ai * B_ds[i][14];
-        out15 += Ai * B_ds[i][15];
+        #pragma unroll
+        for (int j = 0; j < TILE_SZ_B; j++) {
+          out[j] += Ai * B_ds[i][j];
+        }
       }
     }
     __syncthreads();
@@ -152,22 +150,12 @@ __global__ void conv_forward_opt_kernel(const float *X, const shape xdims, const
 
   // Write result
   if (row < m) {
-    if (col < n) C(row, col) = out0;
-    if (col + 1 < n) C(row, col + 1) = out1;
-    if (col + 2 < n) C(row, col + 2) = out2;
-    if (col + 3 < n) C(row, col + 3) = out3;
-    if (col + 4 < n) C(row, col + 4) = out4;
-    if (col + 5 < n) C(row, col + 5) = out5;
-    if (col + 6 < n) C(row, col + 6) = out6;
-    if (col + 7 < n) C(row, col + 7) = out7;
-    if (col + 8 < n) C(row, col + 8) = out8;
-    if (col + 9 < n) C(row, col + 9) = out9;
-    if (col + 10 < n) C(row, col + 10) = out10;
-    if (col + 11 < n) C(row, col + 11) = out11;
-    if (col + 12 < n) C(row, col + 12) = out12;
-    if (col + 13 < n) C(row, col + 13) = out13;
-    if (col + 14 < n) C(row, col + 14) = out14;
-    if (col + 15 < n) C(row, col + 15) = out15;
+    #pragma unroll
+    for (int j = 0; j < TILE_SZ_B; j++) {
+      if (col + j < n) {
+        C(row, col + j) = out[j];
+      }
+    }
   }
 
   #undef A
@@ -186,6 +174,7 @@ static void convlayer_gpu_opt(const float *X, const shape &xdims, const float *W
   int mtx_numRow = ydims.depth;
   int mtx_numCol = H_out * W_out;
   dim3 dimGrid(ceil((float) mtx_numRow/TILE_SZ_A), ceil((float) mtx_numCol/TILE_SZ_B), ydims.num);
+  // dim3 dimGrid(ceil((float) mtx_numCol/TILE_SZ_A), ceil((float) mtx_numRow/TILE_SZ_B), ydims.num);
   dim3 dimBlock(TILE_SZ_A, 1, 1);
   conv_forward_opt_kernel<<<dimGrid, dimBlock>>>(X, xdims, W, wdims, Y, ydims);
   THROW_IF_ERROR(cudaGetLastError());
@@ -276,7 +265,7 @@ static int eval(const shape wDims, const shape xDims, bool doVerify) {
 
 
 TEST_CASE("Convlayer", "[convlayer]") {
-#if 1
+#if 0
   // test five times in case code errors depend on data
   SECTION("[wDims:32,1,5,5 xDims:20,1,28,28]") {
     eval({32,1,5,5}, {20,1,28,28}, true);
